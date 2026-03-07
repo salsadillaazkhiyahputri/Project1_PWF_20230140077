@@ -1,0 +1,1 @@
+![README/SS TUGAS/pertemuan1.png](pertemuan1.png)
