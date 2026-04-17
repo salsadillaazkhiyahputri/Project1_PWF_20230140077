@@ -63,6 +63,7 @@
                             </div>
                         </div>
 
+                        @if ($isAdmin)
                         <div>
                             <label for="user_id" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                                 Owner <span class="text-red-500">*</span>
@@ -106,6 +107,7 @@
                                 <p class="mt-1.5 text-xs text-red-500">{{ $message }}</p>
                             @enderror
                         </div>
+                        @endif
 
                         <div class="flex items-center justify-end gap-3 pt-2">
                             <a href="{{ route('product.index') }}" class="px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition">

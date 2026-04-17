@@ -4,103 +4,181 @@ namespace App\Http\Controllers;
 
 use App\Models\Product;
 use App\Models\User;
+use App\Models\Category;
 use Illuminate\Http\Request;
-use Illuminate\Foundation\Auth\Access\AuthorizesRequests; // Tambahkan ini jika belum ada
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+
 
 class ProductController extends Controller
 {
-    use AuthorizesRequests; // Tambahkan ini agar bisa memanggil $this->authorize()
+    use AuthorizesRequests;
 
     public function index()
     {
         $products = Product::latest()->paginate(10);
+        
         return view('product.index', compact('products'));
     }
 
     public function create()
     {
-        $users = User::orderBy('name')->get();
-        $categories = \App\Models\Category::orderBy('name')->get();
+        $isAdmin = auth()->user()->role === 'admin';
+        $users = $isAdmin ? User::orderBy('name')->get() : collect();
+        $categories = $isAdmin ? Category::orderBy('name')->get() : collect();
 
-        return view('product.create', compact('users', 'categories'));
+        return view('product.create', compact('users', 'categories', 'isAdmin'));
     }
 
     public function store(Request $request)
     {
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'quantity' => 'required|integer',
-            'price' => 'required|numeric',
-            'user_id' => 'required|exists:users,id',
-            'category_id' => 'required|exists:categories,id',
-        ]);
+        $isAdmin = auth()->user()->role === 'admin';
 
+        if ($isAdmin) {
+            $validated = $request->validate([
+                'name' => 'required|string|max:255',
+                'quantity' => 'required|integer',
+                'price' => 'required|numeric',
+                'user_id' => 'required|exists:users,id',
+                'category_id' => 'required|exists:categories,id',
+            ],[
+                'name.required' => 'Nama produk wajib diisi.',
+                'name.max' => 'Nama produk tidak boleh lebih dari 255 karakter.',
+                'quantity.required' => 'Jumlah (kuantitas) produk wajib diisi.',
+                'quantity.integer' => 'Jumlah produk harus berupa angka bulat (tidak boleh desimal).',
+                'price.required' => 'Harga produk wajib diisi.',
+                'price.numeric' => 'Harga produk harus berupa angka yang valid.',
+            ]);
+        } else {
+            $validated = $request->validate([
+                'name' => 'required|string|max:255',
+                'quantity' => 'required|integer',
+                'price' => 'required|numeric',
+            ], [
+                'name.required' => 'Nama produk wajib diisi.',
+            ]);
+            $validated['user_id'] = auth()->id();
+            $validated['category_id'] = Category::firstOrCreate(['name' => 'Uncategorized'])->id;
+        }
+
+        try {
         Product::create($validated);
 
-        return redirect()->route('product.index')->with('success', 'Product created successfully.');
+        return redirect()
+            ->route('product.index')
+            ->with('success', 'Product created successfully.');
+            
+    } catch (QueryException $e) {
+        Log::error('Product store database error', [
+            'message' => $e->getMessage(),
+        ]);
+
+        return redirect()
+            ->back()
+            ->withInput()
+            ->with('error', 'Database error while creating product.');
+            
+    } catch (\Throwable $e) {
+        Log::error('Product store unexpected error', [
+            'message' => $e->getMessage(),
+        ]);
+
+        return redirect()
+            ->back()
+            ->withInput()
+            ->with('error', 'Unexpected error occurred.');
     }
+}
 
     public function show($id)
     {
         $product = Product::findOrFail($id);
+        
         return view('product.view', compact('product'));
     }
 
-    public function edit(Product $product)
+    public function edit($id)
     {
-        // ==========================================
-        // 1. TAMBAHKAN OTORISASI POLICY (UPDATE)
-        // Memeriksa apakah user boleh mengedit produk ini
-        // ==========================================
-        $this->authorize('update', $product);
+        $product = Product::findOrFail($id);
+        $isAdmin = auth()->user()->role === 'admin';
+        $users = $isAdmin ? User::orderBy('name')->get() : collect();
+        $categories = $isAdmin ? Category::all() : collect();
 
-        $users = User::orderBy('name')->get();
-        $categories = \App\Models\Category::orderBy('name')->get(); // Tambahkan categories agar tidak error saat edit
-        return view('product.edit', compact('product', 'users', 'categories'));
+        return view('product.edit', compact('product', 'users', 'categories', 'isAdmin'));
     }
 
-    public function update(Request $request, Product $product) // Ubah $id menjadi Product $product
+    public function update(Request $request, $id)
     {
-        // ==========================================
-        // 2. TAMBAHKAN OTORISASI POLICY (UPDATE)
-        // ==========================================
-        $this->authorize('update', $product);
+        $product = Product::findOrFail($id);
 
-        $validated = $request->validate([
-            'name' => 'sometimes|string|max:255',
-            'quantity' => 'sometimes|integer',
-            'price' => 'sometimes|numeric',
-            'user_id' => 'sometimes|exists:users,id',
-            'category_id' => 'required|exists:categories,id',
-        ]);
+        // Minta izin ke Policy
+        Gate::authorize('update', $product);
+
+        $isAdmin = auth()->user()->role === 'admin';
+
+        if ($isAdmin) {
+            $validated = $request->validate([
+                'name' => 'required|string|max:255',
+                'quantity' => 'required|integer',
+                'price' => 'required|numeric',
+                'user_id' => 'required|exists:users,id',
+                'category_id' => 'required|exists:categories,id',
+            ], [
+                'name.required' => 'Nama produk wajib diisi.',
+                'name.max' => 'Nama produk tidak boleh lebih dari 255 karakter.',
+                'quantity.required' => 'Jumlah (kuantitas) produk wajib diisi.',
+                'quantity.integer' => 'Jumlah produk harus berupa angka bulat (tidak boleh desimal).',
+                'price.required' => 'Harga produk wajib diisi.',
+                'price.numeric' => 'Harga produk harus berupa angka yang valid.',
+            ]);
+
+        } else {
+            $validated = $request->validate([
+                'name' => 'required|string|max:255',
+                'quantity' => 'required|integer',
+                'price' => 'required|numeric',
+            ]);
+            $validated['user_id'] = $product->user_id;
+            $validated['category_id'] = $product->category_id;
+        }
 
         $product->update($validated);
 
         return redirect()->route('product.index')->with('success', 'Product updated successfully.');
     }
 
-    public function delete(Product $product) // Ubah $id menjadi Product $product
+    // Method untuk Delete (jika form Anda mengarah ke route 'product.destroy')
+    public function destroy($id)
     {
-        // ==========================================
-        // 3. TAMBAHKAN OTORISASI POLICY (DELETE)
-        // Memeriksa apakah user/admin boleh menghapus
-        // ==========================================
-        $this->authorize('delete', $product);
+        $product = Product::findOrFail($id);
+
+        // Minta izin ke Policy
+        Gate::authorize('delete', $product);
 
         $product->delete();
 
         return redirect()->route('product.index')->with('success', 'Product berhasil dihapus');
     }
 
-    // Tambahkan method ini jika Anda ingin menjalankan instruksi export Gate
+    // Method untuk Delete (jika form Anda mengarah ke route 'product.delete')
+    public function delete($id)
+    {
+        $product = Product::findOrFail($id);
+
+        // Minta izin ke Policy
+        Gate::authorize('delete', $product);
+
+        $product->delete();
+
+        return redirect()->route('product.index')->with('success', 'Product berhasil dihapus');
+    }
+
     public function export()
     {
-        // Cek Gate secara manual di Controller
-        if (\Illuminate\Support\Facades\Gate::denies('export-product')) {
+        if (Gate::denies('export-product')) {
             abort(403, 'Hanya Admin yang bisa export data.');
         }
 
-        // Logika export Anda di sini...
         return response()->json(['message' => 'Proses export dimulai...']);
     }
 }
