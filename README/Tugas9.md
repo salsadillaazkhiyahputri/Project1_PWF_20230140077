@@ -2,7 +2,8 @@
 
 1. Login GetToken
 
-![alt text](<SS TUGAS/T9_login untuk mendapatkan token.png>)
+<img width="1919" height="1028" alt="image" src="https://github.com/user-attachments/assets/18862c5b-65e5-4329-be70-6bfb4bcc92dd" />
+
 
 3. Tambah Category baru
 
